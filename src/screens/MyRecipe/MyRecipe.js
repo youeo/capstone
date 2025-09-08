@@ -11,14 +11,37 @@ import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-nat
 
 const API_BASE_URL = 'http://43.200.200.161:8080';
 
+const parseCookingTime = (timeString) => {
+  if (!timeString || typeof timeString !== 'string') return Infinity;
+  
+  let totalMinutes = 0;
+  const hourMatch = timeString.match(/(\d+)\s*시간/);
+  const minuteMatch = timeString.match(/(\d+)\s*분/);
+
+  if (hourMatch) {
+    totalMinutes += parseInt(hourMatch[1], 10) * 60;
+  }
+  if (minuteMatch) {
+    totalMinutes += parseInt(minuteMatch[1], 10);
+  }
+  
+  if (!hourMatch && !minuteMatch) {
+    const numberOnlyMatch = timeString.match(/\d+/);
+    if (numberOnlyMatch) {
+      totalMinutes = parseInt(numberOnlyMatch[0], 10);
+    }
+  }
+
+  return totalMinutes > 0 ? totalMinutes : Infinity;
+};
+
 const MyRecipe = () => {
   const navigation = useNavigation();
   const [activeTab, setActiveTab] = useState('saved');
   const [recipes, setRecipes] = useState([]); 
   const [loading, setLoading] = useState(true);
   const [sortModalVisible, setSortModalVisible] = useState(false);
-  const [sortOption, setSortOption] = useState('latest');
-  
+  const [sortOption, setSortOption] = useState('alphabetical');
   
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredRecipes, setFilteredRecipes] = useState([]); 
@@ -26,29 +49,32 @@ const MyRecipe = () => {
   useFocusEffect(
     React.useCallback(() => {
       loadRecipesFromServer();
-    }, [activeTab, sortOption])
+    }, [activeTab])
   );
 
-  
   useEffect(() => {
+    let sortedRecipes = [...recipes];
+    if (sortOption === 'alphabetical') {
+      sortedRecipes.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
+    } else if (sortOption === 'time') {
+      sortedRecipes.sort((a, b) => parseCookingTime(a.time) - parseCookingTime(b.time));
+    }
+
     if (searchQuery.trim() === '') {
-      
-      setFilteredRecipes(recipes);
+      setFilteredRecipes(sortedRecipes);
     } else {
-      
-      const filtered = recipes.filter(recipe => {
+      const filtered = sortedRecipes.filter(recipe => {
         const allIngredients = [
           ...(recipe.mainIngredients || []),
           ...(recipe.subIngredients || [])
         ];
-        
         return allIngredients.some(ingredient => 
           ingredient.name && ingredient.name.toLowerCase().includes(searchQuery.toLowerCase())
         );
       });
       setFilteredRecipes(filtered);
     }
-  }, [searchQuery, recipes]); 
+  }, [searchQuery, recipes, sortOption]);
 
   const loadRecipesFromServer = async () => {
     setLoading(true);
@@ -64,14 +90,7 @@ const MyRecipe = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      let loadedRecipes = response.data || [];
-      
-      if (sortOption === 'alphabetical') {
-        loadedRecipes.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-      }
-      
-      setRecipes(loadedRecipes); 
-      setFilteredRecipes(loadedRecipes);
+      setRecipes(response.data || []);
 
     } catch (error) {
       console.error('레시피 로드 오류:', error);
@@ -98,9 +117,7 @@ const MyRecipe = () => {
                 headers: { Authorization: `Bearer ${token}` }
               });
               
-              const updatedRecipes = recipes.filter(recipe => recipe.code !== recipeToDelete.code);
-              setRecipes(updatedRecipes);
-              setFilteredRecipes(updatedRecipes); 
+              setRecipes(prev => prev.filter(recipe => recipe.code !== recipeToDelete.code));
               Alert.alert('완료', '레시피가 삭제되었습니다.');
 
             } catch (error) {
@@ -130,9 +147,7 @@ const MyRecipe = () => {
                 headers: { Authorization: `Bearer ${token}` }
               });
               
-              const updatedRecipes = recipes.filter(recipe => recipe.code !== recipeToRemove.code);
-              setRecipes(updatedRecipes);
-              setFilteredRecipes(updatedRecipes); 
+              setRecipes(prev => prev.filter(recipe => recipe.code !== recipeToRemove.code));
               Alert.alert('완료', '찜이 취소되었습니다.');
 
             } catch (error) {
@@ -151,8 +166,9 @@ const MyRecipe = () => {
   };
 
   const RecipeCard = ({ recipe }) => {
+    const main = Array.isArray(recipe.mainIngredients) ? recipe.mainIngredients : [];
     const sub = Array.isArray(recipe.subIngredients) ? recipe.subIngredients : [];
-    const ingredientsList = sub
+    const ingredientsList = [...main, ...sub]
       .map(ing => ing?.name) 
       .filter(Boolean)      
       .join(', ');         
@@ -173,9 +189,9 @@ const MyRecipe = () => {
           }
         >
           <Ionicons 
-            name={"heart-dislike-outline"}
+            name={activeTab === 'saved' ? "heart-dislike-outline" : "close-circle-outline"}
             size={24} 
-            color={activeTab === 'saved' ? "#ef4444" : "#ef4444"} 
+            color={"#ef4444"} 
           />
         </TouchableOpacity>
         
@@ -186,7 +202,7 @@ const MyRecipe = () => {
               <Text style={styles.cookingTime}>조리시간: {recipe.time}</Text>
             ) : null}
             <Text style={styles.ingredients} numberOfLines={1} ellipsizeMode="tail">
-              주요재료: {ingredientsList || '정보 없음'}
+              재료: {ingredientsList || '정보 없음'}
             </Text>
           </View>
           <View style={styles.arrowContainer}>
@@ -236,7 +252,6 @@ const MyRecipe = () => {
         </TouchableOpacity>
       </View>
       
-
       <View style={styles.searchContainer}>
         <Ionicons name="search" size={20} color="#9ca3af" style={{marginLeft: 8}} />
         <TextInput
@@ -252,8 +267,6 @@ const MyRecipe = () => {
           </TouchableOpacity>
         )}
       </View>
-   
-
 
       <View style={styles.controlContainer}>
         <TouchableOpacity 
@@ -261,7 +274,7 @@ const MyRecipe = () => {
           onPress={() => setSortModalVisible(true)}
         >
           <Text style={styles.sortText}>
-            {sortOption === 'latest' ? '최신순' : '가나다순'}
+            {sortOption === 'alphabetical' ? '가나다순' : '조리 시간 순'}
           </Text>
           <Ionicons name="swap-vertical" size={16} color="#6b7280" />
         </TouchableOpacity>
@@ -292,15 +305,15 @@ const MyRecipe = () => {
             <Text style={styles.modalTitle}>정렬 기준</Text>
             <TouchableOpacity 
               style={styles.sortOption}
-              onPress={() => changeSortOption('latest')}
-            >
-              <Text style={styles.sortOptionText}>최신 등록순</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.sortOption}
               onPress={() => changeSortOption('alphabetical')}
             >
               <Text style={styles.sortOptionText}>가나다순</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.sortOption}
+              onPress={() => changeSortOption('time')}
+            >
+              <Text style={styles.sortOptionText}>조리 시간 순</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -328,7 +341,7 @@ const MyRecipe = () => {
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1 },
+    container: { flex: 1, backgroundColor: '#fff' },
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: hp(7), paddingBottom: hp(2), backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
     headerButton: { backgroundColor: '#f3f4f6', padding: 8, borderRadius: 999 },
     headerTitle: { fontSize: hp(2.2), fontWeight: 'bold' },
@@ -347,7 +360,6 @@ const styles = StyleSheet.create({
       marginTop: 16,
       paddingHorizontal: 8,
     },
-
     searchInput: {
       flex: 1,
       height: 40,
@@ -355,7 +367,6 @@ const styles = StyleSheet.create({
       paddingLeft: 8,
       color: '#1f2937',
     },
-   
     controlContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginVertical: 16 },
     sortContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f3f4f6', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 20 },
     sortText: { fontSize: 14, color: '#6b7280', marginRight: 4 },
@@ -363,13 +374,13 @@ const styles = StyleSheet.create({
     addButtonText: { fontSize: 14, fontWeight: '600', marginLeft: 4, color: '#fff' },
     scrollView: { flex: 1, paddingHorizontal: 16 },
     recipeCard: { backgroundColor: '#f9fafb', borderRadius: 12, marginBottom: 16, borderWidth: 1, borderColor: '#f3f4f6', shadowColor: '#1f2937', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
-    deleteButton: { position: 'absolute', top: 8, right: 8, zIndex: 1, padding: 4 },
+    deleteButton: { position: 'absolute', top: 8, right: 8, zIndex: 1, padding: 4, marginRight: 5 },
     cardContent: { flexDirection: 'row', alignItems: 'center', padding: 16 },
     textContainer: { flex: 1 },
     recipeName: { fontSize: 18, fontWeight: 'bold', color: '#1f2937', marginBottom: 4 },
     cookingTime: { fontSize: 13, color: '#6b7280', marginBottom: 8 },
     ingredients: { fontSize: 13, color: '#9ca3af' },
-    arrowContainer: { paddingLeft: 16 },
+    arrowContainer: { paddingLeft: 16, marginTop: 50 },
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     emptyContainer: { alignItems: 'center', justifyContent: 'center', paddingTop: 80 },
     emptyText: { marginTop: 16, fontSize: 16, color: '#9ca3af', textAlign: 'center' },
@@ -377,7 +388,7 @@ const styles = StyleSheet.create({
     modalContent: { backgroundColor: 'white', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40 },
     modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
     sortOption: { paddingVertical: 16, alignItems: 'center' },
-    sortOptionText: { fontSize: 16},
+    sortOptionText: { fontSize: 16 },
 });
 
 export default MyRecipe;

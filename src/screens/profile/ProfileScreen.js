@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { ChevronLeftIcon, PlusIcon, ChevronRightIcon } from 'react-native-heroicons/outline';
+import { ChevronLeftIcon, PlusIcon, ChevronRightIcon, PencilIcon } from 'react-native-heroicons/outline';
 import { UserCircleIcon } from 'react-native-heroicons/solid';
 import axios from 'axios';
 import { getAuthToken } from '../../AuthService';
@@ -17,9 +17,13 @@ export default function ProfileScreen() {
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const [isModalVisible, setModalVisible] = useState(false);
+  const [isDeleteModalVisible, setDeleteModalVisible] = useState(false);
   const [password, setPassword] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const [isNameModalVisible, setNameModalVisible] = useState(false);
+  const [newUserId, setNewUserId] = useState('');
+  const [isUpdatingName, setIsUpdatingName] = useState(false);
 
   useEffect(() => {
     if (isFocused) {
@@ -28,6 +32,7 @@ export default function ProfileScreen() {
   }, [isFocused]);
 
   const fetchUserData = async () => {
+    if (!isFocused) return;
     setLoading(true);
     try {
       const token = await getAuthToken();
@@ -51,6 +56,7 @@ export default function ProfileScreen() {
           toolsList: BITS_TO_NAMES(user.tools, TOOLS_MAP),
           bannedList: BITS_TO_NAMES(user.banned, ALLERGY_MAP),
       });
+      setNewUserId(user.userId);
       
     } catch (error) {
       console.error('Failed to fetch user data:', error);
@@ -58,6 +64,31 @@ export default function ProfileScreen() {
       navigation.reset({ index: 0, routes: [{ name: 'Welcome' }] });
     } finally {
         setLoading(false);
+    }
+  };
+  
+  const handleUpdateUsername = async () => {
+    if (!newUserId.trim()) {
+      Alert.alert("오류", "새 아이디를 입력해주세요.");
+      return;
+    }
+    setIsUpdatingName(true);
+    try {
+      const token = await getAuthToken();
+      const updatedUser = { ...userData, userId: newUserId };
+      
+      await axios.put(`${API_BASE_URL}/api/update`, updatedUser, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      Alert.alert("성공", "아이디가 변경되었습니다.");
+      setNameModalVisible(false);
+      fetchUserData(); // 변경된 정보를 다시 불러옴
+    } catch (error) {
+      console.error("Username update error:", error.response || error);
+      Alert.alert("오류", "아이디 변경 중 문제가 발생했습니다.");
+    } finally {
+      setIsUpdatingName(false);
     }
   };
 
@@ -97,7 +128,7 @@ export default function ProfileScreen() {
 
         if (response.data === 1) {
             Alert.alert("완료", "회원 탈퇴가 처리되었습니다.");
-            setModalVisible(false);
+            setDeleteModalVisible(false);
             await AsyncStorage.removeItem('accessToken');
             navigation.reset({ index: 0, routes: [{ name: 'Welcome' }] });
         } else if (response.data === 4) {
@@ -165,6 +196,9 @@ export default function ProfileScreen() {
         <View style={styles.userInfoContainer}>
             <UserCircleIcon size={hp(8)} color="#ffab00" />
             <Text style={styles.userIdText}>{userData.userId}</Text>
+            <TouchableOpacity onPress={() => setNameModalVisible(true)} style={{ marginLeft: 10, padding: 5 }}>
+                <PencilIcon size={hp(2.5)} color="#a1a1aa" />
+            </TouchableOpacity>
         </View>
 
         {renderSection('알레르기', userData.bannedList, 'SelectAllergyScreen')}
@@ -175,7 +209,7 @@ export default function ProfileScreen() {
             <Text style={styles.logoutButtonText}>로그아웃</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => setModalVisible(true)} style={styles.deleteButton}>
+        <TouchableOpacity onPress={() => setDeleteModalVisible(true)} style={styles.deleteButton}>
             <Text style={styles.deleteButtonText}>회원 탈퇴</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -183,8 +217,8 @@ export default function ProfileScreen() {
       <Modal
         animationType="fade"
         transparent={true}
-        visible={isModalVisible}
-        onRequestClose={() => setModalVisible(false)}
+        visible={isDeleteModalVisible}
+        onRequestClose={() => setDeleteModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
@@ -203,7 +237,7 @@ export default function ProfileScreen() {
                 <View style={styles.modalButtons}>
                     <TouchableOpacity
                         style={[styles.modalButton, styles.cancelButton]}
-                        onPress={() => setModalVisible(false)}
+                        onPress={() => setDeleteModalVisible(false)}
                     >
                         <Text style={styles.cancelButtonText}>취소</Text>
                     </TouchableOpacity>
@@ -213,6 +247,40 @@ export default function ProfileScreen() {
                         disabled={isDeleting}
                     >
                         {isDeleting ? <ActivityIndicator color="#fff" /> : <Text style={styles.confirmButtonText}>탈퇴</Text>}
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={isNameModalVisible}
+        onRequestClose={() => setNameModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+                <Text style={styles.modalTitle}>아이디 변경</Text>
+                <TextInput
+                    style={styles.modalInput}
+                    value={newUserId}
+                    onChangeText={setNewUserId}
+                    autoCapitalize="none"
+                />
+                <View style={styles.modalButtons}>
+                    <TouchableOpacity
+                        style={[styles.modalButton, styles.cancelButton]}
+                        onPress={() => setNameModalVisible(false)}
+                    >
+                        <Text style={styles.cancelButtonText}>취소</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.modalButton, styles.confirmButtonName]}
+                        onPress={handleUpdateUsername}
+                        disabled={isUpdatingName}
+                    >
+                        {isUpdatingName ? <ActivityIndicator color="#fff" /> : <Text style={styles.confirmButtonText}>저장</Text>}
                     </TouchableOpacity>
                 </View>
             </View>
@@ -311,18 +379,16 @@ const styles = StyleSheet.create({
     fontSize: hp(2),
     fontWeight: '600',
   },
-  // --- ## 회원탈퇴 버튼 스타일 수정 ## ---
   deleteButton: {
     alignItems: 'center',
     marginTop: hp(3),
-    paddingVertical: 8, // 터치 영역 확보
+    paddingVertical: 8,
   },
   deleteButtonText: {
-    color: '#ef4444', // 빨간색
+    color: '#ef4444',
     fontSize: hp(1.8),
-    textDecorationLine: 'underline', // 밑줄
+    textDecorationLine: 'underline',
   },
-  // ---
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -371,6 +437,9 @@ const styles = StyleSheet.create({
   },
   confirmButton: {
     backgroundColor: '#ef4444',
+  },
+  confirmButtonName: {
+    backgroundColor: '#43794b',
   },
   confirmButtonText: {
     color: 'white',
