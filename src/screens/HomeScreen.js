@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from 'react-native-responsive-screen';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import AntDesign from '@expo/vector-icons/AntDesign';
 import { UserCircleIcon } from 'react-native-heroicons/solid';
 import axios from 'axios';
@@ -19,34 +19,34 @@ export default function HomeScreen() {
   // 공통 섀도우 스타일
   const shadow = styles.shadow;
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const token = await getAuthToken();
-        if (!token) return;
+  useFocusEffect(
+    React.useCallback(() => {
+      const loadFridgeItems = async () => {
+        try {
+          const token = await getAuthToken();
+          if (!token) return;
 
-        const res = await axios.get(`${API_BASE_URL}/api/me`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+          const res = await axios.get(`${API_BASE_URL}/api/me`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
 
-        const user = res.data || {};
-        
-        const raw =
-          user.ingredients ??
-          [];
+          const user = res.data || {};
+          const raw = user.ingredients ?? [];
 
-        const items = Array.isArray(raw)
-          ? raw.map(x => (typeof x === 'string' ? x : (x?.name ?? ''))).filter(Boolean)
-          : [];
+          const items = Array.isArray(raw)
+            ? raw.map(x => (typeof x === 'string' ? x : (x?.name ?? ''))).filter(Boolean)
+            : [];
 
-        setFridgeItems(items);
-      } catch (e) {
-        console.warn('[fridge load fail]', e?.response?.status, e?.response?.data);
-        setFridgeItems([]);
-      }
-    })();
-  }, []);
+          setFridgeItems(items);
+        } catch (e) {
+          console.warn('[fridge load fail]', e?.response?.status, e?.response?.data);
+          setFridgeItems([]);
+        }
+      };
 
+      loadFridgeItems();
+    }, [])
+  );
 
   // 공통 초록 카드
   const ActionCard = ({ title, onPress, icon }) => (
