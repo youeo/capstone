@@ -33,7 +33,7 @@ export default function IngredientToday() {
       if (Array.isArray(res.data)) {
         setIngredients(res.data);
       } else if (res.data) {
-        setIngredients([res.data]); // 객체라면 배열로 감싸기
+        setIngredients([res.data]);
       } else {
         setIngredients([]);
       }
